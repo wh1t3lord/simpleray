@@ -96,16 +96,16 @@ private:
 /* math types */
 
 /// @brief mathematical
-class ray
+class ray_t
 {
 public:
-	ray() {}
-	ray(const dvec3& origin, const dvec3& direction) :
+	ray_t() {}
+	ray_t(const dvec3& origin, const dvec3& direction) :
 		m_origin{origin}, m_direction{direction}
 	{
 	}
 
-	~ray() {}
+	~ray_t() {}
 
 	const dvec3& get_origin() const { return this->m_origin; }
 	dvec3& get_origin() { return this->m_origin; }
@@ -135,7 +135,7 @@ void test_image(global_vars_t& gvars)
 
 	image_ppm_t img(256, 256);
 
-	auto status = img.open("test.ppm");
+	auto status = img.open("test1_gradient.ppm");
 
 	if (status)
 	{
@@ -150,11 +150,97 @@ void test_image(global_vars_t& gvars)
 	std::cout << "test.ppm was created" << std::endl;
 }
 
-void test_simple_ray(global_vars_t& gvars) {}
+void test_simple_ray(global_vars_t& gvars) 
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0,0,0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner =
+		origin - (horizontal / 2.0) - (vertical / 2.0) - glm::dvec3(0, 0, focal_length);
+
+	image_ppm_t img(width, height);
+
+	img.open("test2_background.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			auto norm_dir = glm::normalize(ray.get_direction());
+
+			auto t = 0.5 * (norm_dir.y + 1.0);
+
+			auto color = (1.0 - t) * glm::dvec3(1.0, 1.0, 1.0) +
+				t * glm::dvec3(0.5, 0.7, 1.0);
+
+			img.write(color);
+		}
+	}
+}
+
+void test_simple_sphere(global_vars_t& gvars) 
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0, 0, 0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
+
+	image_ppm_t img(width, height);
+
+	img.open("test3_sphere.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			auto norm_dir = glm::normalize(ray.get_direction());
+
+			auto t = 0.5 * (norm_dir.y + 1.0);
+
+			auto color = (1.0 - t) * glm::dvec3(1.0, 1.0, 1.0) +
+				t * glm::dvec3(0.5, 0.7, 1.0);
+
+			img.write(color);
+		}
+	}
+}
 
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
+	test_simple_ray(gvars);
+	test_simple_sphere(gvars);
 }
 
 /* deinit */
