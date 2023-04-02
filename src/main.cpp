@@ -129,6 +129,20 @@ void init(global_vars_t& gvars)
 }
 
 /* simulation */
+
+bool hit_sphere(const glm::dvec3& center, double radius, const ray_t& ray)
+{
+	auto oc = ray.get_origin() - center;
+
+	auto a = glm::dot(ray.get_direction(), ray.get_direction());
+	auto b = 2.0 * glm::dot(oc, ray.get_direction());
+	auto c = glm::dot(oc, oc) - radius * radius;
+
+	auto discriminant = (b * b) - (4 * a * c);
+
+	return (discriminant > 0);
+}
+
 void test_image(global_vars_t& gvars)
 {
 	std::cout << "writing test image" << std::endl;
@@ -150,7 +164,7 @@ void test_image(global_vars_t& gvars)
 	std::cout << "test.ppm was created" << std::endl;
 }
 
-void test_simple_ray(global_vars_t& gvars) 
+void test_simple_ray(global_vars_t& gvars)
 {
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
@@ -160,12 +174,12 @@ void test_simple_ray(global_vars_t& gvars)
 	auto viewport_width = aspect_ratio * viewport_height;
 	auto focal_length = 1.0;
 
-	auto origin = glm::dvec3(0,0,0);
+	auto origin = glm::dvec3(0, 0, 0);
 
 	auto horizontal = glm::dvec3(viewport_width, 0, 0);
 	auto vertical = glm::dvec3(0, viewport_height, 0);
-	auto lower_left_corner =
-		origin - (horizontal / 2.0) - (vertical / 2.0) - glm::dvec3(0, 0, focal_length);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
 
 	image_ppm_t img(width, height);
 
@@ -193,7 +207,7 @@ void test_simple_ray(global_vars_t& gvars)
 	}
 }
 
-void test_simple_sphere(global_vars_t& gvars) 
+void test_simple_sphere(global_vars_t& gvars)
 {
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
@@ -224,12 +238,20 @@ void test_simple_sphere(global_vars_t& gvars)
 			ray_t ray(origin,
 				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
 
-			auto norm_dir = glm::normalize(ray.get_direction());
+			glm::dvec3 color;
+			if (hit_sphere({0, 0, -1}, 0.5, ray))
+			{
+				color = {1, 0, 0};
+			}
+			else
+			{
+				auto norm_dir = glm::normalize(ray.get_direction());
 
-			auto t = 0.5 * (norm_dir.y + 1.0);
+				auto t = 0.5 * (norm_dir.y + 1.0);
 
-			auto color = (1.0 - t) * glm::dvec3(1.0, 1.0, 1.0) +
-				t * glm::dvec3(0.5, 0.7, 1.0);
+				color = (1.0 - t) * glm::dvec3(1.0, 1.0, 1.0) +
+					t * glm::dvec3(0.5, 0.7, 1.0);
+			}
 
 			img.write(color);
 		}
