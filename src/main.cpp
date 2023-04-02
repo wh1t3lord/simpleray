@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <vector>
 
 #include <glm/glm.hpp>
 
@@ -118,6 +119,79 @@ public:
 private:
 	dvec3 m_origin;
 	dvec3 m_direction;
+};
+
+class hit_record_t
+{
+public:
+	hit_record_t() : m_is_hitted{}, m_is_front_face{}, m_t{} {}
+	~hit_record_t() {}
+
+	bool is_front_face() const { return this->m_is_front_face; }
+	void set_front_face(bool status) { this->m_is_front_face = status; }
+
+	double get_t() const { return this->m_t; }
+	void set_t(double value) { this->m_t = value; }
+
+	const glm::dvec3& get_point(void) const { return this->m_point; }
+	void set_point(const glm::dvec3& point) { this->m_point = point; }
+
+	const glm::dvec3& get_normal(void) const { return this->m_normal; }
+	void set_normal(const glm::dvec3& normal) { this->m_normal = normal; }
+
+	bool is_hitted(void) const { return this->m_is_hitted; }
+	void set_hitted(bool status) { this->m_is_hitted = status; }
+
+private:
+	bool m_is_hitted;
+	bool m_is_front_face;
+	double m_t;
+	glm::dvec3 m_point;
+	glm::dvec3 m_normal;
+};
+
+enum class eEntityType : int
+{
+	kEntityType_Triangle = 1 << 0,
+	kEntityType_Sphere = 1 << 1,
+	kEntityType_Box = 1 << 2,
+	kEntityType_Unknown = -1
+};
+
+class entity_t
+{
+public:
+	entity_t() : m_type{eEntityType::kEntityType_Unknown} {}
+	entity_t(eEntityType type) : m_type{type} {}
+	~entity_t() {}
+
+	const glm::dvec3& get_positon() const { return this->m_position; }
+	void set_position(const glm::dvec3& pos) { this->m_position = pos; }
+
+	eEntityType get_type(void) const { return this->m_type; }
+	void set_type(eEntityType type) { this->m_type = type; }
+
+private:
+	eEntityType m_type;
+	glm::dvec3 m_position;
+};
+
+class world_t
+{
+public:
+	world_t() {}
+	~world_t() {}
+
+	void clear() { this->m_entities; }
+	void add(const entity_t& object) { this->m_entities.push_back(object); }
+
+	hit_record_t hit() {}
+
+private:
+	hit_record_t hit_sphere() {}
+
+private:
+	std::vector<entity_t> m_entities;
 };
 
 /* init */
