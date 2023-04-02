@@ -185,6 +185,7 @@ public:
 	void clear() { this->m_entities; }
 	void add(const entity_t& object) { this->m_entities.push_back(object); }
 
+
 	hit_record_t hit() {}
 
 private:
