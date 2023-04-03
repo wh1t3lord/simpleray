@@ -25,4 +25,4 @@ This is a simple project for understanding lighting in computer graphics.
 
 | test1_gradient.ppm  |
 | ------------- 	  |
-| [[images/1.png]]    |
+| ![](images/1.png)    |
