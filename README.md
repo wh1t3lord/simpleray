@@ -34,3 +34,7 @@ This is a simple project for understanding lighting in computer graphics.
 | test3_sphere.ppm  |
 | ------------- 	  |
 | ![](images/3.png)    |
+
+| test4_world_sphere.ppm  |
+| ------------- 	  |
+| ![](images/4.png)    |

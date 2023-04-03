@@ -1,6 +1,7 @@
-#include <iostream>
+﻿#include <iostream>
 #include <fstream>
 #include <vector>
+#include <variant>
 
 #include <glm/glm.hpp>
 
@@ -155,25 +156,89 @@ enum class eEntityType : int
 	kEntityType_Triangle = 1 << 0,
 	kEntityType_Sphere = 1 << 1,
 	kEntityType_Box = 1 << 2,
+	kEntityType_Plane = 1 << 3,
+	kEntityType_Pyramid = 1 << 4,
+	kEntityType_Cone = 1 << 5,
+
 	kEntityType_Unknown = -1
+};
+
+class sphere_data_t
+{
+public:
+	sphere_data_t() {}
+	sphere_data_t(double radius, const glm::dvec3& position) :
+		m_radius{radius}, m_position{position}
+	{
+	}
+	~sphere_data_t() {}
+
+	double get_radius() const { return this->m_radius; }
+	void set_radius(double value) { this->m_radius = value; }
+
+	const glm::dvec3& get_position() const { return this->m_position; }
+	void set_position(const glm::dvec3& position)
+	{
+		this->m_position = position;
+	}
+
+private:
+	double m_radius;
+	glm::dvec3 m_position;
+};
+
+class rectangle_data_t
+{
+public:
+	rectangle_data_t() {}
+	~rectangle_data_t() {}
+
+private:
+	glm::dvec3 m_poses[4];
+};
+
+class box_data_t
+{
+public:
+	box_data_t() : m_radius{} {}
+	box_data_t() : m_radius{} {}
+	~box_data_t() {}
+
+	double get_radius() const { return this->m_radius; }
+	void set_radius(double value) { this->m_radius = value; }
+
+	const glm::dvec3& get_position() const { return this->m_position; }
+	void set_position(const glm::dvec3& position)
+	{
+		this->m_position = position;
+	}
+
+private:
+	double m_radius;
+	glm::dvec3 m_position;
 };
 
 class entity_t
 {
 public:
 	entity_t() : m_type{eEntityType::kEntityType_Unknown} {}
-	entity_t(eEntityType type) : m_type{type} {}
+	entity_t(eEntityType type, const sphere_data_t& data) :
+		m_type{type}, m_data{data}
+	{
+	}
 	~entity_t() {}
 
-	const glm::dvec3& get_positon() const { return this->m_position; }
-	void set_position(const glm::dvec3& pos) { this->m_position = pos; }
+	const sphere_data_t& get_sphere_data() const
+	{
+		return std::get<sphere_data_t>(this->m_data);
+	}
 
 	eEntityType get_type(void) const { return this->m_type; }
 	void set_type(eEntityType type) { this->m_type = type; }
 
 private:
 	eEntityType m_type;
-	glm::dvec3 m_position;
+	std::variant<sphere_data_t> m_data;
 };
 
 class world_t
@@ -185,11 +250,120 @@ public:
 	void clear() { this->m_entities; }
 	void add(const entity_t& object) { this->m_entities.push_back(object); }
 
+	hit_record_t hit(
+		const entity_t& entity, const ray_t& ray, double t_min, double t_max)
+	{
+		hit_record_t result;
 
-	hit_record_t hit() {}
+		switch (entity.get_type())
+		{
+		case eEntityType::kEntityType_Triangle:
+		{
+			break;
+		}
+		case eEntityType::kEntityType_Sphere:
+		{
+			result = hit_sphere(entity, ray, t_min, t_max);
+			break;
+		}
+		case eEntityType::kEntityType_Box:
+		{
+			break;
+		}
+		case eEntityType::kEntityType_Unknown:
+		{
+			break;
+		}
+		}
+
+		return result;
+	}
+
+	const std::vector<entity_t>& get_entities() const
+	{
+		return this->m_entities;
+	}
 
 private:
-	hit_record_t hit_sphere() {}
+	// in order to detect the sphere hit we need to solve this quadratic
+	// equation (p(t) - c) * (p(t) - c) = r^2 where p(t) is our ray's formula a
+	// + tb. So it goes like this (a + tb - c) * (a + tb - c) = r^2 and after
+	// the final operations t^2⋅b⋅b + 2tb⋅(A−C) + (A−C)⋅(A−C)−r2=0 but for
+	// better reading we re-write to general form of quadratic equation t^2 * a
+	// + 2t * b + c = 0 so we need to define our a,b,c variables, but for sphere
+	// we have b=2h situation that means we can reduce amount of computation,
+	// because we just need half_b instead of squared b
+	hit_record_t hit_sphere(
+		const entity_t& entity, const ray_t& ray, double t_min, double t_max)
+	{
+		hit_record_t result;
+
+		const auto& sphere_data = entity.get_sphere_data();
+
+		auto oc = ray.get_origin() - sphere_data.get_position();
+
+		// t^2*b*b or the a coefficient at t^2 in general form
+		auto a = glm::dot(ray.get_direction(), ray.get_direction());
+
+		// b * (A - C)
+		auto half_b = glm::dot(oc, ray.get_direction());
+
+		auto c = glm::dot(oc, oc) -
+			sphere_data.get_radius() * sphere_data.get_radius();
+
+		auto discriminant = half_b * half_b - a * c;
+
+		if (discriminant < 0)
+		{
+			result.set_hitted(false);
+			return result;
+		}
+
+		auto sqrtd = sqrt(discriminant);
+
+		auto root = (-half_b - sqrtd) / a;
+
+		if (root < t_min || t_max < root)
+		{
+			root = (-half_b + sqrtd) / a;
+
+			if (root < t_min || t_max < root)
+			{
+				result.set_hitted(false);
+				return result;
+			}
+		}
+
+		result.set_t(root);
+		result.set_point(ray.at(root));
+
+		auto outward_normal =
+			(result.get_point() - sphere_data.get_position()) /
+			sphere_data.get_radius();
+
+		if (glm::dot(outward_normal, ray.get_direction()) < 0)
+		{
+			result.set_normal(outward_normal);
+			result.set_front_face(true);
+		}
+		else
+		{
+			result.set_normal(-outward_normal);
+			result.set_front_face(false);
+		}
+
+		result.set_hitted(true);
+
+		return result;
+	}
+
+	hit_record_t hit_triangle(
+		const entity_t& entity, const ray_t& ray, double t_min, double t_max)
+	{
+		hit_record_t result;
+
+		return result;
+	}
 
 private:
 	std::vector<entity_t> m_entities;
@@ -201,6 +375,22 @@ void init_window(global_vars_t& gvars) {}
 void init(global_vars_t& gvars)
 {
 	init_window(gvars);
+}
+
+/* draw functions */
+
+// just linear interpolation between two colors
+glm::dvec3 draw_gradient(
+	double value, const glm::dvec3& from, const glm::dvec3& to)
+{
+	return (1.0 - value) * from + value * to;
+}
+
+// normalizing result of normal + color because color RGB components can't be
+// higher than 1.0 for that case we multiply on 0.5
+glm::dvec3 draw_normal(const glm::dvec3& normal)
+{
+	return 0.5 * (normal + glm::dvec3(1.0, 1.0, 1.0));
 }
 
 /* simulation */
@@ -333,11 +523,69 @@ void test_simple_sphere(global_vars_t& gvars)
 	}
 }
 
+void test_world_sphere(global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0, 0, 0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
+
+	world_t world;
+	world.add(
+		entity_t(eEntityType::kEntityType_Sphere, {0.5, {0.0, 0.0, -1.0}}));
+
+	image_ppm_t img(width, height);
+
+	img.open("test4_world_sphere.ppm");
+
+	constexpr double inf = std::numeric_limits<double>::infinity();
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			for (const auto& entity : world.get_entities())
+			{
+				const auto& hit_result = world.hit(entity, ray, 0.0, inf);
+
+				if (hit_result.is_hitted())
+				{
+					img.write(draw_normal(hit_result.get_normal()));
+				}
+				else
+				{
+					auto t =
+						0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+					img.write(
+						draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0}));
+				}
+			}
+		}
+	}
+}
+
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
 	test_simple_ray(gvars);
 	test_simple_sphere(gvars);
+	test_world_sphere(gvars);
 }
 
 /* deinit */
