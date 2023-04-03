@@ -21,3 +21,8 @@ This is a simple project for understanding lighting in computer graphics.
 - cd build
 - cmake -DCMAKE_TOOLCHAIN_FILE="./vcpkg/scripts/buildsystems/vcpkg.cmake" .. 
 
+## Gallery
+
+| test1_gradient.ppm  |
+| ------------- 	  |
+| [[images/1.png]]    |
