@@ -201,7 +201,6 @@ class box_data_t
 {
 public:
 	box_data_t() : m_radius{} {}
-	box_data_t() : m_radius{} {}
 	~box_data_t() {}
 
 	double get_radius() const { return this->m_radius; }
