@@ -26,3 +26,11 @@ This is a simple project for understanding lighting in computer graphics.
 | test1_gradient.ppm  |
 | ------------- 	  |
 | ![](images/1.png)    |
+
+| test2_background.ppm  |
+| ------------- 	  |
+| ![](images/2.png)    |
+
+| test3_sphere.ppm  |
+| ------------- 	  |
+| ![](images/3.png)    |
