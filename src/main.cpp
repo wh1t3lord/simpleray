@@ -7,9 +7,31 @@
 
 using namespace glm;
 
-struct global_vars_t
+struct global_vars_t;
+
+constexpr double kInfinityDouble = std::numeric_limits<double>::infinity();
+constexpr double kPI = 3.14159265358979323846;
+constexpr glm::dvec3 kErrorColor = {224 / 255, 31 / 255, 199 / 255};
+
+double math_convert_degrees_to_radians(double degrees)
 {
-};
+	return degrees * kPI / 180.0;
+}
+
+double math_convert_radians_to_degrees(double radians)
+{
+	return radians * 180.0 / kPI;
+}
+
+#include <random>
+
+// from 0.0 to 1.0
+double math_random_double()
+{
+	static std::uniform_real_distribution<double> distribution(0.0, 1.0);
+	static std::mt19937 generator;
+	return distribution(generator);
+}
 
 /* image types */
 class image_ppm_t
@@ -125,7 +147,11 @@ private:
 class hit_record_t
 {
 public:
-	hit_record_t() : m_is_hitted{}, m_is_front_face{}, m_t{} {}
+	hit_record_t() :
+		m_is_hitted{}, m_is_front_face{},
+		m_draw_normal_map{}, m_t{}, m_p_color{}
+	{
+	}
 	~hit_record_t() {}
 
 	bool is_front_face() const { return this->m_is_front_face; }
@@ -143,10 +169,18 @@ public:
 	bool is_hitted(void) const { return this->m_is_hitted; }
 	void set_hitted(bool status) { this->m_is_hitted = status; }
 
+	bool is_draw_normal_map() const { return this->m_draw_normal_map; }
+	void set_draw_normal_map(bool status) { this->m_draw_normal_map = status; }
+
+	const glm::dvec3* get_color() const { return this->m_p_color; }
+	void set_color(const glm::dvec3* p_color) { this->m_p_color = p_color; }
+
 private:
 	bool m_is_hitted;
 	bool m_is_front_face;
+	bool m_draw_normal_map;
 	double m_t;
+	const glm::dvec3* m_p_color;
 	glm::dvec3 m_point;
 	glm::dvec3 m_normal;
 };
@@ -167,8 +201,10 @@ class sphere_data_t
 {
 public:
 	sphere_data_t() {}
-	sphere_data_t(double radius, const glm::dvec3& position) :
-		m_radius{radius}, m_position{position}
+	sphere_data_t(bool draw_normal_map, double radius,
+		const glm::dvec3& position, const glm::dvec3& color) :
+		m_draw_normal_map{draw_normal_map},
+		m_radius{radius}, m_position{position}, m_color{color}
 	{
 	}
 	~sphere_data_t() {}
@@ -182,9 +218,17 @@ public:
 		this->m_position = position;
 	}
 
+	bool is_draw_normal_map() const { return this->m_draw_normal_map; }
+	void set_draw_normal_map(bool status) { this->m_draw_normal_map = status; }
+
+	const glm::dvec3& get_color() const { return this->m_color; }
+	void set_color(const glm::dvec3& color) { this->m_color = color; }
+
 private:
+	bool m_draw_normal_map;
 	double m_radius;
 	glm::dvec3 m_position;
+	glm::dvec3 m_color;
 };
 
 class rectangle_data_t
@@ -262,7 +306,7 @@ public:
 		}
 		case eEntityType::kEntityType_Sphere:
 		{
-			result = hit_sphere(entity, ray, t_min, t_max);
+			result = this->hit_sphere(entity, ray, t_min, t_max);
 			break;
 		}
 		case eEntityType::kEntityType_Box:
@@ -352,7 +396,8 @@ private:
 		}
 
 		result.set_hitted(true);
-
+		result.set_draw_normal_map(sphere_data.is_draw_normal_map());
+		result.set_color(&sphere_data.get_color());
 		return result;
 	}
 
@@ -366,6 +411,66 @@ private:
 
 private:
 	std::vector<entity_t> m_entities;
+};
+
+class camera_t
+{
+public:
+	camera_t() {}
+	camera_t(const glm::dvec3& origin, double aspect_ratio,
+		double viewport_height, double focal_length = 1.0) :
+		m_origin{origin}
+	{
+		double viewport_width = aspect_ratio * viewport_height;
+
+		this->m_horizontal = glm::dvec3(viewport_width, 0.0, 0.0);
+		this->m_vertical = glm::dvec3(0.0, viewport_height, 0.0);
+
+		this->m_lower_left_corner = this->m_origin -
+			(this->m_horizontal / 2.0) - (this->m_vertical / 2.0) -
+			glm::dvec3(0.0, 0.0, focal_length);
+	}
+	~camera_t() {}
+
+	const glm::dvec3& get_origin() const { return this->m_origin; }
+	void set_origin(const glm::dvec3& origin) { this->m_origin = origin; }
+
+	const glm::dvec3& get_lower_left_corner() const
+	{
+		return this->m_lower_left_corner;
+	}
+	void set_lower_left_corner(const glm::dvec3& coord)
+	{
+		this->m_lower_left_corner = coord;
+	}
+
+	const glm::dvec3& get_horizontal() const { return this->m_horizontal; }
+	void set_horizontal(const glm::dvec3& coord) { this->m_horizontal = coord; }
+
+	const glm::dvec3& get_vertical() const { return this->m_vertical; }
+	void set_vertical(const glm::dvec3& coord) { this->m_vertical = coord; }
+
+	ray_t get_ray(double u, double v)
+	{
+		return ray_t(this->m_origin,
+			this->m_lower_left_corner + u * this->m_horizontal +
+				v * this->m_vertical - this->m_origin);
+	}
+
+private:
+	glm::dvec3 m_origin;
+	glm::dvec3 m_lower_left_corner;
+	glm::dvec3 m_horizontal;
+	glm::dvec3 m_vertical;
+};
+
+struct global_vars_t
+{
+	global_vars_t() : m_samples_per_pixel{} {}
+	~global_vars_t() {}
+
+	int m_samples_per_pixel;
+	camera_t m_camera;
 };
 
 /* init */
@@ -540,8 +645,8 @@ void test_world_sphere(global_vars_t& gvars)
 		glm::dvec3(0, 0, focal_length);
 
 	world_t world;
-	world.add(
-		entity_t(eEntityType::kEntityType_Sphere, {0.5, {0.0, 0.0, -1.0}}));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
 
 	image_ppm_t img(width, height);
 
@@ -559,13 +664,17 @@ void test_world_sphere(global_vars_t& gvars)
 			ray_t ray(origin,
 				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
 
+			// it works only for one entity
 			for (const auto& entity : world.get_entities())
 			{
 				const auto& hit_result = world.hit(entity, ray, 0.0, inf);
 
 				if (hit_result.is_hitted())
 				{
-					img.write(draw_normal(hit_result.get_normal()));
+					if (hit_result.is_draw_normal_map())
+					{
+						img.write(draw_normal(hit_result.get_normal()));
+					}
 				}
 				else
 				{
@@ -579,12 +688,252 @@ void test_world_sphere(global_vars_t& gvars)
 	}
 }
 
+void test_world_sphere_with_ground(global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0, 0, 0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.8, -1.0}, {0.0, 1.0, 0.0})));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
+
+	image_ppm_t img(width, height);
+
+	img.open("test5_world_sphere_with_ground.ppm");
+
+	glm::dvec3 output_color;
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			bool is_hitted{};
+
+			for (const auto& entity : world.get_entities())
+			{
+				const auto& hit_result =
+					world.hit(entity, ray, 0.0, kInfinityDouble);
+
+				if (hit_result.is_hitted())
+				{
+					is_hitted = true;
+					if (hit_result.is_draw_normal_map())
+					{
+						output_color = draw_normal(hit_result.get_normal());
+					}
+					else
+					{
+						if (hit_result.get_color())
+						{
+							output_color = *hit_result.get_color();
+						}
+						else
+						{
+							output_color = kErrorColor;
+						}
+					}
+				}
+			}
+
+			if (!is_hitted)
+			{
+				auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+				output_color =
+					draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+			}
+
+			img.write(output_color);
+		}
+	}
+}
+
+void test_world_sphere_with_ground_new_aspect_ratio(global_vars_t& gvars)
+{
+	auto aspect_ratio = 4.0 / 3.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0, 0, 0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.8, -1.0}, {0.0, 1.0, 0.0})));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
+
+	image_ppm_t img(width, height);
+
+	img.open("test5_world_sphere_with_ground_new_ratio.ppm");
+
+	glm::dvec3 output_color;
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			bool is_hitted{};
+
+			for (const auto& entity : world.get_entities())
+			{
+				const auto& hit_result =
+					world.hit(entity, ray, 0.0, kInfinityDouble);
+
+				if (hit_result.is_hitted())
+				{
+					is_hitted = true;
+					if (hit_result.is_draw_normal_map())
+					{
+						output_color = draw_normal(hit_result.get_normal());
+					}
+					else
+					{
+						if (hit_result.get_color())
+						{
+							output_color = *hit_result.get_color();
+						}
+						else
+						{
+							output_color = kErrorColor;
+						}
+					}
+				}
+			}
+
+			if (!is_hitted)
+			{
+				auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+				output_color =
+					draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+			}
+
+			img.write(output_color);
+		}
+	}
+}
+
+void test_world_camera(global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+
+	auto viewport_height = 2.0;
+	auto viewport_width = aspect_ratio * viewport_height;
+	auto focal_length = 1.0;
+
+	auto origin = glm::dvec3(0, 0, 0);
+
+	auto horizontal = glm::dvec3(viewport_width, 0, 0);
+	auto vertical = glm::dvec3(0, viewport_height, 0);
+	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
+		glm::dvec3(0, 0, focal_length);
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.8, -1.0}, {0.0, 1.0, 0.0})));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
+
+	image_ppm_t img(width, height);
+
+	img.open("test6_world_camera.ppm");
+
+	glm::dvec3 output_color;
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			auto u = double(i) / (width - 1);
+			auto v = double(j) / (height - 1);
+
+			ray_t ray(origin,
+				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
+
+			bool is_hitted{};
+
+			for (const auto& entity : world.get_entities())
+			{
+				const auto& hit_result =
+					world.hit(entity, ray, 0.0, kInfinityDouble);
+
+				if (hit_result.is_hitted())
+				{
+					is_hitted = true;
+					if (hit_result.is_draw_normal_map())
+					{
+						output_color = draw_normal(hit_result.get_normal());
+					}
+					else
+					{
+						if (hit_result.get_color())
+						{
+							output_color = *hit_result.get_color();
+						}
+						else
+						{
+							output_color = kErrorColor;
+						}
+					}
+				}
+			}
+
+			if (!is_hitted)
+			{
+				auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+				output_color =
+					draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+			}
+
+			img.write(output_color);
+		}
+	}
+}
+
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
 	test_simple_ray(gvars);
 	test_simple_sphere(gvars);
 	test_world_sphere(gvars);
+	test_world_sphere_with_ground(gvars);
+	test_world_sphere_with_ground_new_aspect_ratio(gvars);
+	test_world_camera(gvars);
 }
 
 /* deinit */
