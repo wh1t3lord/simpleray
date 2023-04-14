@@ -61,6 +61,23 @@ public:
 		}
 	}
 
+	void write(const dvec3& color, int samples_per_pixel)
+	{
+		auto r = color.x;
+		auto g = color.y;
+		auto b = color.z;
+
+		auto scale = 1.0 / samples_per_pixel;
+
+		r *= scale;
+		g *= scale;
+		b *= scale;
+
+		this->m_file << static_cast<int>(256 * clamp(r, 0.0, 0.999)) << ' '
+					 << static_cast<int>(256 * clamp(g, 0.0, 0.999)) << ' '
+					 << static_cast<int>(256 * clamp(b, 0.0, 0.999)) << '\n';
+	}
+
 	int get_width() const { return this->m_width; }
 	int get_height() const { return this->m_height; }
 
@@ -851,17 +868,9 @@ void test_world_camera(global_vars_t& gvars)
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
 	auto height = width / aspect_ratio;
-
 	auto viewport_height = 2.0;
-	auto viewport_width = aspect_ratio * viewport_height;
-	auto focal_length = 1.0;
-
-	auto origin = glm::dvec3(0, 0, 0);
-
-	auto horizontal = glm::dvec3(viewport_width, 0, 0);
-	auto vertical = glm::dvec3(0, viewport_height, 0);
-	auto lower_left_corner = origin - (horizontal / 2.0) - (vertical / 2.0) -
-		glm::dvec3(0, 0, focal_length);
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
 
 	world_t world;
 	world.add(entity_t(eEntityType::kEntityType_Sphere,
@@ -873,54 +882,59 @@ void test_world_camera(global_vars_t& gvars)
 
 	img.open("test6_world_camera.ppm");
 
-	glm::dvec3 output_color;
-
 	for (int j = height - 1; j >= 0; --j)
 	{
 		for (int i = 0; i < width; ++i)
 		{
-			auto u = double(i) / (width - 1);
-			auto v = double(j) / (height - 1);
+			glm::dvec3 output_color;
 
-			ray_t ray(origin,
-				lower_left_corner + (u * horizontal) + (v * vertical) - origin);
-
-			bool is_hitted{};
-
-			for (const auto& entity : world.get_entities())
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
 			{
-				const auto& hit_result =
-					world.hit(entity, ray, 0.0, kInfinityDouble);
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
 
-				if (hit_result.is_hitted())
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				for (const auto& entity : world.get_entities())
 				{
-					is_hitted = true;
-					if (hit_result.is_draw_normal_map())
+					const auto& hit_result =
+						world.hit(entity, ray, 0.0, kInfinityDouble);
+
+					if (hit_result.is_hitted())
 					{
-						output_color = draw_normal(hit_result.get_normal());
-					}
-					else
-					{
-						if (hit_result.get_color())
+						is_hitted = true;
+						if (hit_result.is_draw_normal_map())
 						{
-							output_color = *hit_result.get_color();
+							output_color +=
+								draw_normal(hit_result.get_normal());
 						}
 						else
 						{
-							output_color = kErrorColor;
+							if (hit_result.get_color())
+							{
+								output_color += *hit_result.get_color();
+							}
+							else
+							{
+								output_color += kErrorColor;
+							}
 						}
 					}
 				}
+
+				if (!is_hitted)
+				{
+					auto t =
+						0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+					output_color +=
+						draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+				}
 			}
 
-			if (!is_hitted)
-			{
-				auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
-				output_color =
-					draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
-			}
-
-			img.write(output_color);
+			img.write(output_color, gvars.m_samples_per_pixel);
 		}
 	}
 }
