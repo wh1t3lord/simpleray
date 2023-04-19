@@ -471,7 +471,8 @@ public:
 	{
 		return ray_t(this->m_origin,
 			(this->m_lower_left_corner + u * this->m_horizontal +
-				v * this->m_vertical) - this->m_origin);
+				v * this->m_vertical) -
+				this->m_origin);
 	}
 
 private:
@@ -754,21 +755,8 @@ void test_world_sphere_with_ground(global_vars_t& gvars)
 				if (hit_result.is_hitted())
 				{
 					is_hitted = true;
-					if (hit_result.is_draw_normal_map())
-					{
-						output_color = draw_normal(hit_result.get_normal());
-					}
-					else
-					{
-						if (hit_result.get_color())
-						{
-							output_color = *hit_result.get_color();
-						}
-						else
-						{
-							output_color = kErrorColor;
-						}
-					}
+					output_color += draw_normal(hit_result.get_normal());
+					break;
 				}
 			}
 
@@ -833,21 +821,8 @@ void test_world_sphere_with_ground_new_aspect_ratio(global_vars_t& gvars)
 				if (hit_result.is_hitted())
 				{
 					is_hitted = true;
-					if (hit_result.is_draw_normal_map())
-					{
-						output_color = draw_normal(hit_result.get_normal());
-					}
-					else
-					{
-						if (hit_result.get_color())
-						{
-							output_color = *hit_result.get_color();
-						}
-						else
-						{
-							output_color = kErrorColor;
-						}
-					}
+					output_color += draw_normal(hit_result.get_normal());
+					break;
 				}
 			}
 
