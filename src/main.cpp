@@ -470,8 +470,8 @@ public:
 	ray_t get_ray(double u, double v)
 	{
 		return ray_t(this->m_origin,
-			this->m_lower_left_corner + u * this->m_horizontal +
-				v * this->m_vertical - this->m_origin);
+			(this->m_lower_left_corner + u * this->m_horizontal +
+				v * this->m_vertical) - this->m_origin);
 	}
 
 private:
@@ -874,9 +874,9 @@ void test_world_camera(global_vars_t& gvars)
 
 	world_t world;
 	world.add(entity_t(eEntityType::kEntityType_Sphere,
-		sphere_data_t(false, 100.0, {0.0, -100.8, -1.0}, {0.0, 1.0, 0.0})));
-	world.add(entity_t(eEntityType::kEntityType_Sphere,
 		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0})));
 
 	image_ppm_t img(width, height);
 
@@ -886,7 +886,7 @@ void test_world_camera(global_vars_t& gvars)
 	{
 		for (int i = 0; i < width; ++i)
 		{
-			glm::dvec3 output_color;
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
 
 			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
 				 ++sample_index)
@@ -906,22 +906,8 @@ void test_world_camera(global_vars_t& gvars)
 					if (hit_result.is_hitted())
 					{
 						is_hitted = true;
-						if (hit_result.is_draw_normal_map())
-						{
-							output_color +=
-								draw_normal(hit_result.get_normal());
-						}
-						else
-						{
-							if (hit_result.get_color())
-							{
-								output_color += *hit_result.get_color();
-							}
-							else
-							{
-								output_color += kErrorColor;
-							}
-						}
+						output_color += draw_normal(hit_result.get_normal());
+						break;
 					}
 				}
 

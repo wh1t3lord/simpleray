@@ -40,3 +40,15 @@ This is a simple project for understanding lighting in computer graphics.
 | test4_world_sphere.ppm  |
 | ------------- 	  |
 | ![](images/4.png)    |
+
+| test5_world_sphere_with_ground.ppm  |
+| ------------- 	  |
+| ![](images/5.png)    |
+
+| test6_world_camera.ppm  |
+| ------------- 	  |
+| ![](images/6.png)    |
+
+| test6_world_camera.ppm (anti-aliasing)	 |
+| ------------- 	  | ------------- 		 |
+| ![](images/6_aa.png)|	![](images/6_no_aa.png) |
