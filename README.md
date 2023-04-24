@@ -49,6 +49,6 @@ This is a simple project for understanding lighting in computer graphics.
 | ------------- 	  |
 | ![](images/6.png)    |
 
-| test6_world_camera.ppm (anti-aliasing)	 | 	|
+| test6_world_camera.ppm (anti-aliasing)	 | (without it) 	|
 | ------------- 	  | ------------- 		 	|
 | ![](images/6_aa.png)|	![](images/6_no_aa.png) |
