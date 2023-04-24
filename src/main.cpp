@@ -25,12 +25,32 @@ double math_convert_radians_to_degrees(double radians)
 
 #include <random>
 
-// from 0.0 to 1.0
-double math_random_double()
+// custom stuff
+// if nothing passed it generates from 0.0 to 1.0
+double math_random_double(double from = 0.0, double to = 1.0)
 {
 	static std::uniform_real_distribution<double> distribution(0.0, 1.0);
 	static std::mt19937 generator;
 	return distribution(generator);
+}
+
+glm::dvec3 math_random_vector3(double from = 0.0, double to = 1.0)
+{
+	return {math_random_double(from, to), math_random_double(from, to),
+		math_random_double(from, to)};
+}
+
+glm::dvec3 math_random_vector3_in_unit_sphere() 
+{
+	while (true)
+	{
+		auto result = math_random_vector3(-1.0, 1.0);
+
+		if (result.length() >= 1)
+			continue;
+
+		return result;
+	}
 }
 
 /* image types */
@@ -900,6 +920,68 @@ void test_world_camera(global_vars_t& gvars)
 	}
 }
 
+void test_world_camera_diffuse(global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0})));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0})));
+
+	image_ppm_t img(width, height);
+
+	img.open("test7_world_camera_diffuse.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				for (const auto& entity : world.get_entities())
+				{
+					const auto& hit_result =
+						world.hit(entity, ray, 0.0, kInfinityDouble);
+
+					if (hit_result.is_hitted())
+					{
+						is_hitted = true;
+						output_color += draw_normal(hit_result.get_normal());
+						break;
+					}
+				}
+
+				if (!is_hitted)
+				{
+					auto t =
+						0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+					output_color +=
+						draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+				}
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel);
+		}
+	}
+}
+
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
@@ -909,6 +991,7 @@ void update(global_vars_t& gvars)
 	test_world_sphere_with_ground(gvars);
 	test_world_sphere_with_ground_new_aspect_ratio(gvars);
 	test_world_camera(gvars);
+	test_world_camera_diffuse(gvars);
 }
 
 /* deinit */
