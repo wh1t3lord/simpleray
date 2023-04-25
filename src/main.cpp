@@ -504,10 +504,11 @@ private:
 
 struct global_vars_t
 {
-	global_vars_t() : m_samples_per_pixel{} {}
+	global_vars_t() : m_samples_per_pixel{}, m_depth_count{} {}
 	~global_vars_t() {}
 
 	int m_samples_per_pixel;
+	int m_depth_count;
 	camera_t m_camera;
 };
 
@@ -858,7 +859,7 @@ void test_world_sphere_with_ground_new_aspect_ratio(global_vars_t& gvars)
 	}
 }
 
-void test_world_camera(global_vars_t& gvars)
+void test_world_camera_antialiasing(global_vars_t& gvars)
 {
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
@@ -920,7 +921,7 @@ void test_world_camera(global_vars_t& gvars)
 	}
 }
 
-void test_world_camera_diffuse(global_vars_t& gvars)
+void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 {
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
@@ -990,8 +991,8 @@ void update(global_vars_t& gvars)
 	test_world_sphere(gvars);
 	test_world_sphere_with_ground(gvars);
 	test_world_sphere_with_ground_new_aspect_ratio(gvars);
-	test_world_camera(gvars);
-	test_world_camera_diffuse(gvars);
+	test_world_camera_antialiasing(gvars);
+	test_world_camera_antialiasing_diffuse(gvars);
 }
 
 /* deinit */
