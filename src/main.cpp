@@ -46,7 +46,7 @@ glm::dvec3 math_random_vector3_in_unit_sphere()
 	{
 		auto result = math_random_vector3(-1.0, 1.0);
 
-		if (result.length() >= 1)
+		if (glm::dot(result, result) >= 1)
 			continue;
 
 		return result;
@@ -536,6 +536,31 @@ glm::dvec3 draw_normal(const glm::dvec3& normal)
 	return 0.5 * (normal + glm::dvec3(1.0, 1.0, 1.0));
 }
 
+glm::dvec3 draw_diffuse(const ray_t& ray, world_t& world, int depth) 
+{
+	if (depth <= 0)
+		return {0.0, 0.0, 0.0};
+
+	for (auto entity : world.get_entities())
+	{
+		const auto& hit_result =
+			world.hit(entity, ray, 0.0, kInfinityDouble);
+		if (hit_result.is_hitted())
+		{
+			auto target = hit_result.get_point() + hit_result.get_normal() +
+				math_random_vector3_in_unit_sphere();
+
+			return 0.5 *
+				draw_diffuse(ray_t(hit_result.get_point(),
+								 target - hit_result.get_point()),
+					world, depth - 1);
+		}
+	}
+
+	auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+	return draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+}
+
 /* simulation */
 
 bool hit_sphere(const glm::dvec3& center, double radius, const ray_t& ray)
@@ -927,8 +952,10 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 	auto width = 400;
 	auto height = width / aspect_ratio;
 	auto viewport_height = 2.0;
+	
 	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
 	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
 
 	world_t world;
 	world.add(entity_t(eEntityType::kEntityType_Sphere,
@@ -956,6 +983,9 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 
 				bool is_hitted{};
 
+				output_color += draw_diffuse(ray, world, gvars.m_depth_count);
+
+				/*
 				for (const auto& entity : world.get_entities())
 				{
 					const auto& hit_result =
@@ -964,10 +994,41 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 					if (hit_result.is_hitted())
 					{
 						is_hitted = true;
-						output_color += draw_normal(hit_result.get_normal());
+				//		output_color += draw_normal(hit_result.get_normal());
+
+
+						auto new_hit_result = hit_result;
+						for (int current_depth = 0;
+							 current_depth < gvars.m_depth_count;
+							 ++current_depth)
+						{
+							auto target = new_hit_result.get_point() +
+								new_hit_result.get_normal() +
+								math_random_vector3_in_unit_sphere();
+
+							auto new_ray = ray_t(new_hit_result.get_point(),
+								target - new_hit_result.get_point());
+	
+							new_hit_result = world.hit(
+								entity, new_ray, 0.0, kInfinityDouble);
+
+							if (new_hit_result.is_hitted() == false)
+							{
+								auto accumulated = glm::pow(0.5, current_depth);
+
+								auto t = 0.5 *
+									(glm::normalize(new_ray.get_direction()).y +
+										1.0);
+								output_color += (accumulated * draw_gradient(
+									t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0}));
+								break;
+							}
+						}
+
 						break;
 					}
 				}
+				
 
 				if (!is_hitted)
 				{
@@ -975,7 +1036,7 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 						0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
 					output_color +=
 						draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
-				}
+				}*/
 			}
 
 			img.write(output_color, gvars.m_samples_per_pixel);
