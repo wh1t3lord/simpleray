@@ -52,3 +52,7 @@ This is a simple project for understanding lighting in computer graphics.
 | test6_world_camera.ppm (anti-aliasing)	 | (without it) 	|
 | ------------- 	  | ------------- 		 	|
 | ![](images/6_aa.png)|	![](images/6_no_aa.png) |
+
+| test7_world_camera_aa_diffuse_gamma_correction.ppm (without lambert) | with lambert |
+| ------------- 	  | ------------- 		 	|
+| ![](images/7.png)    | ![](images/7_lambert.png) |
