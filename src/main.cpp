@@ -40,7 +40,7 @@ glm::dvec3 math_random_vector3(double from = 0.0, double to = 1.0)
 		math_random_double(from, to)};
 }
 
-glm::dvec3 math_random_vector3_in_unit_sphere() 
+glm::dvec3 math_random_vector3_in_unit_sphere()
 {
 	while (true)
 	{
@@ -53,9 +53,23 @@ glm::dvec3 math_random_vector3_in_unit_sphere()
 	}
 }
 
-glm::dvec3 math_random_unit_vector() 
+glm::dvec3 math_random_unit_vector()
 {
 	return glm::normalize(math_random_vector3_in_unit_sphere());
+}
+
+glm::dvec3 math_reflect(const glm::dvec3& dir, const glm::dvec3& normal) 
+{
+	return glm::normalize(dir) - 2 * glm::dot(dir, normal) * normal;
+}
+
+
+bool math_is_near_zero(const glm::dvec3& vec)
+{
+	const auto epsilon = std::numeric_limits<double>::epsilon();
+
+	return (fabs(vec.x) < epsilon && (fabs(vec.y) < epsilon) &&
+		(fabs(vec.z) < epsilon));
 }
 
 /* image types */
@@ -86,14 +100,14 @@ public:
 		}
 	}
 
-	void write(const dvec3& color, int samples_per_pixel, bool is_use_gamma_correction = false)
+	void write(const dvec3& color, int samples_per_pixel,
+		bool is_use_gamma_correction = false)
 	{
 		auto r = color.x;
 		auto g = color.y;
 		auto b = color.z;
 
 		auto scale = 1.0 / samples_per_pixel;
-
 
 		if (!is_use_gamma_correction)
 		{
@@ -107,7 +121,6 @@ public:
 			g = sqrt(scale * g);
 			b = sqrt(scale * b);
 		}
-
 
 		this->m_file << static_cast<int>(256 * clamp(r, 0.0, 0.999)) << ' '
 					 << static_cast<int>(256 * clamp(g, 0.0, 0.999)) << ' '
@@ -197,6 +210,69 @@ private:
 	dvec3 m_direction;
 };
 
+enum eMaterialType : int
+{
+	kMaterialType_Diffuse,
+	kMaterialType_Metal,
+	kMaterialType_Dummy,
+	kMaterialType_Undefied = -1
+};
+
+class hit_record_t;
+
+class material_t
+{
+public:
+	material_t() :
+		m_type{eMaterialType::kMaterialType_Diffuse}, m_albedo{0.0, 0.0, 0.0}
+	{
+	}
+	material_t(eMaterialType type, const glm::dvec3& color) :
+		m_type{type}, m_albedo{color}
+	{
+	}
+	~material_t() {}
+
+	const glm::dvec3& get_albedo() const noexcept { return this->m_albedo; }
+	void set_albedo(const glm::dvec3& color) noexcept
+	{
+		this->m_albedo = color;
+	}
+
+private:
+	eMaterialType m_type;
+	glm::dvec3 m_albedo;
+};
+
+bool scatter_diffuse(const material_t& material, const ray_t& r_in, const hit_record_t& rec,
+	glm::dvec3& attenuation, ray_t& scattered)
+{
+	bool result{true};
+
+	auto scatter_direction = rec.get_normal() + math_random_unit_vector();
+
+	if (math_is_near_zero(scatter_direction))
+		scatter_direction = rec.get_normal();
+
+	scattered = ray_t(rec.get_point(), scatter_direction);
+	attenuation = material.get_albedo();
+
+	return result;
+}
+
+bool scatter_metal(const material_t& material, const ray_t& r_in,
+	const hit_record_t& rec, glm::dvec3& attenuation, ray_t& scattered)
+{
+	bool result{true};
+
+
+
+	return result;
+}
+
+
+
+
 class hit_record_t
 {
 public:
@@ -205,6 +281,13 @@ public:
 		m_draw_normal_map{}, m_t{}, m_p_color{}
 	{
 	}
+
+	hit_record_t(const material_t& material) :
+		m_is_hitted{}, m_is_front_face{},
+		m_draw_normal_map{}, m_t{}, m_p_color{}, m_material{material}
+	{
+	}
+
 	~hit_record_t() {}
 
 	bool is_front_face() const { return this->m_is_front_face; }
@@ -228,6 +311,16 @@ public:
 	const glm::dvec3* get_color() const { return this->m_p_color; }
 	void set_color(const glm::dvec3* p_color) { this->m_p_color = p_color; }
 
+	const material_t& get_material(void) const noexcept
+	{
+		return this->m_material;
+	}
+
+	void set_material(const material_t& material) noexcept
+	{
+		this->m_material = material;
+	}
+
 private:
 	bool m_is_hitted;
 	bool m_is_front_face;
@@ -236,6 +329,7 @@ private:
 	const glm::dvec3* m_p_color;
 	glm::dvec3 m_point;
 	glm::dvec3 m_normal;
+	material_t m_material;
 };
 
 enum class eEntityType : int
@@ -255,9 +349,11 @@ class sphere_data_t
 public:
 	sphere_data_t() {}
 	sphere_data_t(bool draw_normal_map, double radius,
-		const glm::dvec3& position, const glm::dvec3& color) :
+		const glm::dvec3& position, const glm::dvec3& color,
+		const material_t& material = {}) :
 		m_draw_normal_map{draw_normal_map},
-		m_radius{radius}, m_position{position}, m_color{color}
+		m_radius{radius}, m_position{position}, m_color{color}, m_material{
+																	material}
 	{
 	}
 	~sphere_data_t() {}
@@ -277,11 +373,22 @@ public:
 	const glm::dvec3& get_color() const { return this->m_color; }
 	void set_color(const glm::dvec3& color) { this->m_color = color; }
 
+	const material_t& get_material(void) const noexcept
+	{
+		return this->m_material;
+	}
+
+	void set_material(const material_t& material) noexcept
+	{
+		this->m_material = material;
+	}
+
 private:
 	bool m_draw_normal_map;
 	double m_radius;
 	glm::dvec3 m_position;
 	glm::dvec3 m_color;
+	material_t m_material;
 };
 
 class rectangle_data_t
@@ -451,6 +558,9 @@ private:
 		result.set_hitted(true);
 		result.set_draw_normal_map(sphere_data.is_draw_normal_map());
 		result.set_color(&sphere_data.get_color());
+
+		result.set_material(sphere_data.get_material());
+
 		return result;
 	}
 
@@ -552,15 +662,14 @@ glm::dvec3 draw_normal(const glm::dvec3& normal)
 	return 0.5 * (normal + glm::dvec3(1.0, 1.0, 1.0));
 }
 
-glm::dvec3 draw_diffuse(const ray_t& ray, world_t& world, int depth) 
+glm::dvec3 draw_diffuse(const ray_t& ray, world_t& world, int depth)
 {
 	if (depth <= 0)
 		return {0.0, 0.0, 0.0};
 
 	for (auto entity : world.get_entities())
 	{
-		const auto& hit_result =
-			world.hit(entity, ray, 0.001, kInfinityDouble);
+		const auto& hit_result = world.hit(entity, ray, 0.001, kInfinityDouble);
 		if (hit_result.is_hitted())
 		{
 			auto target = hit_result.get_point() + hit_result.get_normal() +
@@ -577,7 +686,8 @@ glm::dvec3 draw_diffuse(const ray_t& ray, world_t& world, int depth)
 	return draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
 }
 
-glm::dvec3 draw_diffuse_with_lambert(const ray_t& ray, world_t& world, int depth)
+glm::dvec3 draw_diffuse_with_lambert(
+	const ray_t& ray, world_t& world, int depth)
 {
 	if (depth <= 0)
 		return {0.0, 0.0, 0.0};
@@ -992,7 +1102,7 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 	auto width = 400;
 	auto height = width / aspect_ratio;
 	auto viewport_height = 2.0;
-	
+
 	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
 	gvars.m_samples_per_pixel = 100;
 	gvars.m_depth_count = 50;
@@ -1031,7 +1141,8 @@ void test_world_camera_antialiasing_diffuse(global_vars_t& gvars)
 	}
 }
 
-void test_world_camera_antialiasing_diffuse_with_gamma_correction(global_vars_t& gvars)
+void test_world_camera_antialiasing_diffuse_with_gamma_correction(
+	global_vars_t& gvars)
 {
 	auto aspect_ratio = 16.0 / 9.0;
 	auto width = 400;
@@ -1114,7 +1225,8 @@ void test_world_camera_antialiasing_diffuse_lambert_with_gamma_correction(
 
 				bool is_hitted{};
 
-				output_color += draw_diffuse_with_lambert(ray, world, gvars.m_depth_count);
+				output_color +=
+					draw_diffuse_with_lambert(ray, world, gvars.m_depth_count);
 			}
 
 			img.write(output_color, gvars.m_samples_per_pixel, true);
