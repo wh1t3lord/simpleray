@@ -58,11 +58,10 @@ glm::dvec3 math_random_unit_vector()
 	return glm::normalize(math_random_vector3_in_unit_sphere());
 }
 
-glm::dvec3 math_reflect(const glm::dvec3& dir, const glm::dvec3& normal) 
+glm::dvec3 math_reflect(const glm::dvec3& dir, const glm::dvec3& normal)
 {
 	return glm::normalize(dir) - 2 * glm::dot(dir, normal) * normal;
 }
-
 
 bool math_is_near_zero(const glm::dvec3& vec)
 {
@@ -218,8 +217,6 @@ enum eMaterialType : int
 	kMaterialType_Undefied = -1
 };
 
-class hit_record_t;
-
 class material_t
 {
 public:
@@ -228,7 +225,12 @@ public:
 	{
 	}
 	material_t(eMaterialType type, const glm::dvec3& color) :
-		m_type{type}, m_albedo{color}
+		m_type{type}, m_fuzz{}, m_albedo{color}
+	{
+	}
+
+	material_t(eMaterialType type, double fuzz, const glm::dvec3& color) :
+		m_type{type}, m_fuzz{fuzz}, m_albedo{color}
 	{
 	}
 	~material_t() {}
@@ -239,39 +241,17 @@ public:
 		this->m_albedo = color;
 	}
 
+	eMaterialType get_material_type() const noexcept { return this->m_type; }
+	void set_material_type(eMaterialType type) noexcept { this->m_type = type; }
+
+	double get_fuzz(void) const noexcept { return this->m_fuzz; }
+	void set_fuzz(double value) noexcept { this->m_fuzz = value; }
+
 private:
 	eMaterialType m_type;
+	double m_fuzz;
 	glm::dvec3 m_albedo;
 };
-
-bool scatter_diffuse(const material_t& material, const ray_t& r_in, const hit_record_t& rec,
-	glm::dvec3& attenuation, ray_t& scattered)
-{
-	bool result{true};
-
-	auto scatter_direction = rec.get_normal() + math_random_unit_vector();
-
-	if (math_is_near_zero(scatter_direction))
-		scatter_direction = rec.get_normal();
-
-	scattered = ray_t(rec.get_point(), scatter_direction);
-	attenuation = material.get_albedo();
-
-	return result;
-}
-
-bool scatter_metal(const material_t& material, const ray_t& r_in,
-	const hit_record_t& rec, glm::dvec3& attenuation, ray_t& scattered)
-{
-	bool result{true};
-
-
-
-	return result;
-}
-
-
-
 
 class hit_record_t
 {
@@ -648,6 +628,34 @@ void init(global_vars_t& gvars)
 
 /* draw functions */
 
+bool scatter_diffuse(const material_t& material, const ray_t& r_in,
+	const hit_record_t& rec, glm::dvec3& attenuation, ray_t& scattered)
+{
+	bool result{true};
+
+	auto scatter_direction = rec.get_normal() + math_random_unit_vector();
+
+	if (math_is_near_zero(scatter_direction))
+		scatter_direction = rec.get_normal();
+
+	scattered = ray_t(rec.get_point(), scatter_direction);
+	attenuation = material.get_albedo();
+
+	return result;
+}
+
+bool scatter_metal(const material_t& material, const ray_t& r_in,
+	const hit_record_t& rec, glm::dvec3& attenuation, ray_t& scattered)
+{
+	bool result{true};
+
+	auto reflected = math_reflect(r_in.get_direction(), rec.get_normal());
+	scattered = ray_t(rec.get_point(), reflected + material.get_fuzz() * math_random_vector3_in_unit_sphere());
+	attenuation = material.get_albedo();
+
+	return (glm::dot(scattered.get_direction(), rec.get_normal()) > 0.0);
+}
+
 // just linear interpolation between two colors
 glm::dvec3 draw_gradient(
 	double value, const glm::dvec3& from, const glm::dvec3& to)
@@ -704,6 +712,55 @@ glm::dvec3 draw_diffuse_with_lambert(
 				draw_diffuse(ray_t(hit_result.get_point(),
 								 target - hit_result.get_point()),
 					world, depth - 1);
+		}
+	}
+
+	auto t = 0.5 * (glm::normalize(ray.get_direction()).y + 1.0);
+	return draw_gradient(t, {1.0, 1.0, 1.0}, {0.5, 0.7, 1.0});
+}
+
+glm::dvec3 draw_with_materials(const ray_t& ray, world_t& world, int depth)
+{
+	if (depth <= 0)
+		return {0.0, 0.0, 0.0};
+
+	for (auto entity : world.get_entities())
+	{
+		const auto& hit_result = world.hit(entity, ray, 0.001, kInfinityDouble);
+		if (hit_result.is_hitted())
+		{
+			const auto& material = hit_result.get_material();
+
+			ray_t scattered;
+			glm::dvec3 attenuation;
+
+			switch (material.get_material_type())
+			{
+			case eMaterialType::kMaterialType_Diffuse:
+			{
+				if (scatter_diffuse(
+						material, ray, hit_result, attenuation, scattered))
+				{
+					return attenuation *
+						draw_with_materials(scattered, world, depth - 1);
+				}
+
+				return glm::dvec3(0.0, 0.0, 0.0);
+			}
+			case eMaterialType::kMaterialType_Metal:
+			{
+				if (scatter_metal(
+						material, ray, hit_result, attenuation, scattered))
+				{
+					return attenuation *
+						draw_with_materials(scattered, world, depth - 1);
+				}
+
+				return glm::dvec3(0.0, 0.0, 0.0);
+			}
+			default:
+				return glm::dvec3(0.0, 0.0, 0.0);
+			}
 		}
 	}
 
@@ -1234,6 +1291,233 @@ void test_world_camera_antialiasing_diffuse_lambert_with_gamma_correction(
 	}
 }
 
+// just diffuse no metal
+void test_world_camera_antialiasing_materials_with_gamma_correction(
+	global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.7, 0.3, 0.3)))));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.8, 0.0)))));
+
+	image_ppm_t img(width, height);
+
+	img.open("test8_world_camera_materials_with_gamma_correction.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				output_color +=
+					draw_with_materials(ray, world, gvars.m_depth_count);
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel, true);
+		}
+	}
+}
+
+void test_world_camera_antialiasing_materials2_with_gamma_correction(
+	global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Metal,
+				glm::dvec3(0.7, 0.3, 0.3)))));
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.8, 0.0)))));
+
+	image_ppm_t img(width, height);
+
+	img.open("test8_world_camera_materials2_with_gamma_correction.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				output_color +=
+					draw_with_materials(ray, world, gvars.m_depth_count);
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel, true);
+		}
+	}
+}
+
+void test_world_camera_antialiasing_materials3_with_gamma_correction(
+	global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Metal,
+				glm::dvec3(0.7, 0.3, 0.3)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.2, 0.2)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {-1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.2, 0.2, 0.8)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.8, 0.0)))));
+
+	image_ppm_t img(width, height);
+
+	img.open("test8_world_camera_materials3_with_gamma_correction.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				output_color +=
+					draw_with_materials(ray, world, gvars.m_depth_count);
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel, true);
+		}
+	}
+}
+
+void test_world_camera_antialiasing_materials4_with_gamma_correction(
+	global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Metal, 0.5,
+				glm::dvec3(0.7, 0.3, 0.3)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.2, 0.2)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {-1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.2, 0.2, 0.8)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.8, 0.0)))));
+
+	image_ppm_t img(width, height);
+
+	img.open("test8_world_camera_materials4_with_gamma_correction.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				output_color +=
+					draw_with_materials(ray, world, gvars.m_depth_count);
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel, true);
+		}
+	}
+}
+
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
@@ -1246,6 +1530,10 @@ void update(global_vars_t& gvars)
 	test_world_camera_antialiasing_diffuse(gvars);
 	test_world_camera_antialiasing_diffuse_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_diffuse_lambert_with_gamma_correction(gvars);
+	test_world_camera_antialiasing_materials_with_gamma_correction(gvars);
+	test_world_camera_antialiasing_materials2_with_gamma_correction(gvars);
+	test_world_camera_antialiasing_materials3_with_gamma_correction(gvars);
+	test_world_camera_antialiasing_materials4_with_gamma_correction(gvars);
 }
 
 /* deinit */
