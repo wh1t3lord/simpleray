@@ -1650,19 +1650,24 @@ void test_world_camera_antialiasing_materials_refraction_with_gamma_correction(
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
+
 	test_simple_ray(gvars);
 	test_simple_sphere(gvars);
+
 	test_world_sphere(gvars);
 	test_world_sphere_with_ground(gvars);
 	test_world_sphere_with_ground_new_aspect_ratio(gvars);
 	test_world_camera_antialiasing(gvars);
+
 	test_world_camera_antialiasing_diffuse(gvars);
 	test_world_camera_antialiasing_diffuse_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_diffuse_lambert_with_gamma_correction(gvars);
+
 	test_world_camera_antialiasing_materials_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_materials2_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_materials3_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_materials4_with_gamma_correction(gvars);
+
 	test_world_camera_antialiasing_materials_refraction_with_gamma_correction(
 		gvars);
 }
