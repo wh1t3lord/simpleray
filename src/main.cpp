@@ -63,6 +63,21 @@ glm::dvec3 math_reflect(const glm::dvec3& dir, const glm::dvec3& normal)
 	return glm::normalize(dir) - 2 * glm::dot(dir, normal) * normal;
 }
 
+// refracted ray is perp + paralel components
+// perp is n/n' * (R + cos(thetha) * normal)
+// etai_over_etat = n/n'
+glm::dvec3 math_refract(
+	const glm::dvec3& dir, const glm::dvec3& normal, double etai_over_etat)
+{
+	auto cos_thetha = fmin(glm::dot(-dir, normal), 1.0);
+
+	glm::dvec3 perp = etai_over_etat * (dir + cos_thetha * normal);
+	glm::dvec3 paralel =
+		-sqrt(fabs(1.0 - perp.length() * perp.length())) * normal;
+
+	return perp + paralel;
+}
+
 bool math_is_near_zero(const glm::dvec3& vec)
 {
 	const auto epsilon = std::numeric_limits<double>::epsilon();
@@ -213,6 +228,7 @@ enum eMaterialType : int
 {
 	kMaterialType_Diffuse,
 	kMaterialType_Metal,
+	kMaterialType_Dielectric,
 	kMaterialType_Dummy,
 	kMaterialType_Undefied = -1
 };
@@ -221,18 +237,27 @@ class material_t
 {
 public:
 	material_t() :
-		m_type{eMaterialType::kMaterialType_Diffuse}, m_albedo{0.0, 0.0, 0.0}
+		m_type{eMaterialType::kMaterialType_Diffuse},
+		m_refraction_index{}, m_fuzz{}, m_albedo{0.0, 0.0, 0.0}
 	{
 	}
 	material_t(eMaterialType type, const glm::dvec3& color) :
-		m_type{type}, m_fuzz{}, m_albedo{color}
+		m_type{type}, m_refraction_index{}, m_fuzz{}, m_albedo{color}
 	{
 	}
 
 	material_t(eMaterialType type, double fuzz, const glm::dvec3& color) :
-		m_type{type}, m_fuzz{fuzz}, m_albedo{color}
+		m_type{type}, m_refraction_index{}, m_fuzz{fuzz}, m_albedo{color}
 	{
 	}
+
+	material_t(eMaterialType type, double refraction_index, double fuzz,
+		const glm::dvec3& color) :
+		m_type{type},
+		m_refraction_index{refraction_index}, m_fuzz{fuzz}, m_albedo{color}
+	{
+	}
+
 	~material_t() {}
 
 	const glm::dvec3& get_albedo() const noexcept { return this->m_albedo; }
@@ -247,8 +272,18 @@ public:
 	double get_fuzz(void) const noexcept { return this->m_fuzz; }
 	void set_fuzz(double value) noexcept { this->m_fuzz = value; }
 
+	double get_refraction_index(void) const noexcept
+	{
+		return this->m_refraction_index;
+	}
+	void set_refraction_index(double value) noexcept
+	{
+		this->m_refraction_index = value;
+	}
+
 private:
 	eMaterialType m_type;
+	double m_refraction_index;
 	double m_fuzz;
 	glm::dvec3 m_albedo;
 };
@@ -650,10 +685,30 @@ bool scatter_metal(const material_t& material, const ray_t& r_in,
 	bool result{true};
 
 	auto reflected = math_reflect(r_in.get_direction(), rec.get_normal());
-	scattered = ray_t(rec.get_point(), reflected + material.get_fuzz() * math_random_vector3_in_unit_sphere());
+	scattered = ray_t(rec.get_point(),
+		reflected + material.get_fuzz() * math_random_vector3_in_unit_sphere());
 	attenuation = material.get_albedo();
 
 	return (glm::dot(scattered.get_direction(), rec.get_normal()) > 0.0);
+}
+
+bool scatter_dielectric(const material_t& material, const ray_t& r_in,
+	const hit_record_t& rec, glm::dvec3& attenuation, ray_t& scattered)
+{
+	bool result{true};
+
+	attenuation = glm::dvec3(1.0, 1.0, 1.0);
+	double refraction_ratio = rec.is_front_face()
+		? (1.0 / material.get_refraction_index())
+		: material.get_refraction_index();
+
+	glm::dvec3 unit_direction = glm::normalize(r_in.get_direction());
+	glm::dvec3 refracted =
+		math_refract(unit_direction, rec.get_normal(), refraction_ratio);
+
+	scattered = ray_t(rec.get_point(), refracted);
+
+	return result;
 }
 
 // just linear interpolation between two colors
@@ -750,6 +805,17 @@ glm::dvec3 draw_with_materials(const ray_t& ray, world_t& world, int depth)
 			case eMaterialType::kMaterialType_Metal:
 			{
 				if (scatter_metal(
+						material, ray, hit_result, attenuation, scattered))
+				{
+					return attenuation *
+						draw_with_materials(scattered, world, depth - 1);
+				}
+
+				return glm::dvec3(0.0, 0.0, 0.0);
+			}
+			case eMaterialType::kMaterialType_Dielectric:
+			{
+				if (scatter_dielectric(
 						material, ray, hit_result, attenuation, scattered))
 				{
 					return attenuation *
@@ -1518,6 +1584,69 @@ void test_world_camera_antialiasing_materials4_with_gamma_correction(
 	}
 }
 
+void test_world_camera_antialiasing_materials_refraction_with_gamma_correction(
+	global_vars_t& gvars)
+{
+	auto aspect_ratio = 16.0 / 9.0;
+	auto width = 400;
+	auto height = width / aspect_ratio;
+	auto viewport_height = 2.0;
+
+	gvars.m_camera = camera_t({0.0, 0.0, 0.0}, aspect_ratio, viewport_height);
+	gvars.m_samples_per_pixel = 100;
+	gvars.m_depth_count = 50;
+
+	world_t world;
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {0.0, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Metal, 0.5,
+				glm::dvec3(0.7, 0.3, 0.3)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.2, 0.2)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(true, 0.5, {-1.2, 0.0, -1.0}, {1.0, 0.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Dielectric, 1.5, 0.0,
+				glm::dvec3(0.2, 0.2, 0.8)))));
+
+	world.add(entity_t(eEntityType::kEntityType_Sphere,
+		sphere_data_t(false, 100.0, {0.0, -100.5, -1.0}, {0.0, 1.0, 0.0},
+			material_t(eMaterialType::kMaterialType_Diffuse,
+				glm::dvec3(0.8, 0.8, 0.0)))));
+
+	image_ppm_t img(width, height);
+
+	img.open(
+		"test8_world_camera_materials_refraction_with_gamma_correction.ppm");
+
+	for (int j = height - 1; j >= 0; --j)
+	{
+		for (int i = 0; i < width; ++i)
+		{
+			glm::dvec3 output_color(0.0, 0.0, 0.0);
+
+			for (int sample_index = 0; sample_index < gvars.m_samples_per_pixel;
+				 ++sample_index)
+			{
+				auto u = (double(i) + math_random_double()) / (width - 1);
+				auto v = (double(j) + math_random_double()) / (height - 1);
+
+				const auto& ray = gvars.m_camera.get_ray(u, v);
+
+				bool is_hitted{};
+
+				output_color +=
+					draw_with_materials(ray, world, gvars.m_depth_count);
+			}
+
+			img.write(output_color, gvars.m_samples_per_pixel, true);
+		}
+	}
+}
+
 void update(global_vars_t& gvars)
 {
 	test_image(gvars);
@@ -1534,6 +1663,8 @@ void update(global_vars_t& gvars)
 	test_world_camera_antialiasing_materials2_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_materials3_with_gamma_correction(gvars);
 	test_world_camera_antialiasing_materials4_with_gamma_correction(gvars);
+	test_world_camera_antialiasing_materials_refraction_with_gamma_correction(
+		gvars);
 }
 
 /* deinit */
